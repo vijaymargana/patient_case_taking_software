@@ -1,0 +1,42 @@
+<script>
+        document.getElementById('intakeForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const msg = document.getElementById('responseMessage');
+
+            // 1. Collect data from the form fields
+            const formData = {
+                patient_name: document.getElementById('patientName').value,
+                age: parseInt(document.getElementById('age').value),
+                gender: document.getElementById('gender').value,
+                complaint: document.getElementById('complaint').value,
+                duration: document.getElementById('duration').value
+            };
+
+            try {
+                // 2. Send data to your FastAPI backend
+                const response = await fetch('http://127.0.0.1:8000/api/patient/intake', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    msg.classList.remove('hidden', 'bg-red-50', 'text-red-700');
+                    msg.classList.add('bg-green-50', 'text-green-700');
+                    msg.textContent = result.message;
+                } else {
+                    throw new Error('Server returned an error');
+                }
+            } catch (error) {
+                msg.classList.remove('hidden', 'bg-green-50', 'text-green-700');
+                msg.classList.add('bg-red-50', 'text-red-700');
+                msg.textContent = "Error: Could not connect to the backend server. Make sure Uvicorn is running!";
+            }
+        });
+    </script>
+</body>
+</html>
