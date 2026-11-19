@@ -1,42 +1,1167 @@
-<script>
-        document.getElementById('intakeForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            const msg = document.getElementById('responseMessage');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MediKiosk — AI Clinical History & ABDM Intake Platform</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    .touch-chip { min-height: 44px; }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.7; }
+      70% { transform: scale(1.15); opacity: 0; }
+      100% { transform: scale(1.15); opacity: 0; }
+    }
+    .mic-pulse::before {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 9999px;
+      background: rgba(239, 68, 68, 0.35);
+      animation: pulse-ring 1.4s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col">
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm pointer-events-none"></div>
 
-            // 1. Collect data from the form fields
-            const formData = {
-                patient_name: document.getElementById('patientName').value,
-                age: parseInt(document.getElementById('age').value),
-                gender: document.getElementById('gender').value,
-                complaint: document.getElementById('complaint').value,
-                duration: document.getElementById('duration').value
-            };
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold text-lg shadow-sm">M+</div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base sm:text-lg font-bold text-slate-900 tracking-tight">MediKiosk</h1>
+            <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">ABDM Ready</span>
+          </div>
+          <p class="text-xs text-slate-500 hidden sm:block">AI Clinical History, Document OCR &amp; OPD Triage Platform</p>
+        </div>
+      </div>
 
-            try {
-                // 2. Send data to your FastAPI backend
-                const response = await fetch('http://127.0.0.1:8000/api/patient/intake', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(formData)
-                });
+      <nav class="flex items-center bg-slate-100 p-1 rounded-xl gap-1" aria-label="Primary Views">
+        <button id="navKioskBtn" type="button" class="px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-white text-teal-700 shadow-sm transition">Patient Kiosk</button>
+        <button id="navDoctorBtn" type="button" class="px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900 transition">Physician Screen</button>
+        <button id="navQueueBtn" type="button" class="px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900 transition flex items-center gap-1.5">
+          OPD Queue
+          <span id="queueBadge" class="px-1.5 py-0.2 rounded-full text-[11px] bg-teal-600 text-white">3</span>
+        </button>
+      </nav>
 
-                const result = await response.json();
+      <div class="flex items-center gap-2">
+        <select id="opdModeSelect" aria-label="OPD Clinical Mode" class="text-xs font-medium bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
+          <option value="allopathic">Allopathic OPD</option>
+          <option value="ayush">AYUSH / Ayurveda OPD</option>
+        </select>
+        <select id="langSelect" aria-label="Language" class="text-xs font-medium bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500">
+          <option value="en">English</option>
+          <option value="hi">हिंदी (Hindi)</option>
+          <option value="te">తెలుగు (Telugu)</option>
+        </select>
+      </div>
+    </div>
+  </header>
 
-                if (response.ok) {
-                    msg.classList.remove('hidden', 'bg-red-50', 'text-red-700');
-                    msg.classList.add('bg-green-50', 'text-green-700');
-                    msg.textContent = result.message;
-                } else {
-                    throw new Error('Server returned an error');
-                }
-            } catch (error) {
-                msg.classList.remove('hidden', 'bg-green-50', 'text-green-700');
-                msg.classList.add('bg-red-50', 'text-red-700');
-                msg.textContent = "Error: Could not connect to the backend server. Make sure Uvicorn is running!";
-            }
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-5">
+    <section id="kioskView" class="space-y-5">
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+        <div class="grid grid-cols-4 gap-2 sm:gap-4">
+          <button type="button" data-step="1" class="step-tab flex flex-col sm:flex-row items-center gap-2 p-2 rounded-xl text-left transition bg-teal-50 border border-teal-200">
+            <span class="w-7 h-7 rounded-full bg-teal-600 text-white text-xs font-bold flex items-center justify-center shrink-0">1</span>
+            <div class="min-w-0">
+              <div class="text-xs font-bold text-teal-900 truncate" data-i18n="step1Title">Identify &amp; Consent</div>
+              <div class="text-[11px] text-teal-700 hidden md:block">ABHA &amp; DPDP 2023</div>
+            </div>
+          </button>
+          <button type="button" data-step="2" class="step-tab flex flex-col sm:flex-row items-center gap-2 p-2 rounded-xl text-left transition hover:bg-slate-50 border border-transparent">
+            <span class="w-7 h-7 rounded-full bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center shrink-0">2</span>
+            <div class="min-w-0">
+              <div class="text-xs font-bold text-slate-700 truncate" data-i18n="step2Title">Converse</div>
+              <div class="text-[11px] text-slate-500 hidden md:block">Voice + Touch History</div>
+            </div>
+          </button>
+          <button type="button" data-step="3" class="step-tab flex flex-col sm:flex-row items-center gap-2 p-2 rounded-xl text-left transition hover:bg-slate-50 border border-transparent">
+            <span class="w-7 h-7 rounded-full bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center shrink-0">3</span>
+            <div class="min-w-0">
+              <div class="text-xs font-bold text-slate-700 truncate" data-i18n="step3Title">Scan Docs</div>
+              <div class="text-[11px] text-slate-500 hidden md:block">OCR &amp; Timeline</div>
+            </div>
+          </button>
+          <button type="button" data-step="4" class="step-tab flex flex-col sm:flex-row items-center gap-2 p-2 rounded-xl text-left transition hover:bg-slate-50 border border-transparent">
+            <span class="w-7 h-7 rounded-full bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center shrink-0">4</span>
+            <div class="min-w-0">
+              <div class="text-xs font-bold text-slate-700 truncate" data-i18n="step4Title">Summarize &amp; Route</div>
+              <div class="text-[11px] text-slate-500 hidden md:block">Push to HIS / ABHA</div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <div id="redFlagBanner" class="hidden bg-red-50 border-2 border-red-400 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+        <div class="flex items-start gap-3">
+          <div class="w-9 h-9 rounded-full bg-red-600 text-white flex items-center justify-center font-bold shrink-0">!</div>
+          <div>
+            <h3 class="text-sm font-bold text-red-900">PRIORITY TRIAGE ALERT — Red-Flag Symptoms Detected</h3>
+            <p id="redFlagReason" class="text-xs text-red-800 mt-0.5">Acute chest pain with dyspnoea requires immediate triage nurse review.</p>
+          </div>
+        </div>
+        <span class="px-3 py-1 rounded-full bg-red-600 text-white text-xs font-bold shrink-0">Priority Token Assigned</span>
+      </div>
+
+      <!-- STEP 1 -->
+      <div id="step1Panel" class="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm space-y-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900" data-i18n="s1Heading">Step 1: Patient Identification &amp; Audio-Guided Consent</h2>
+            <p class="text-sm text-slate-500" data-i18n="s1Sub">Enter ABHA ID or basic details. Consent is compliant with DPDP Act 2023 &amp; ABDM.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="fillSamplePatientBtn" type="button" class="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition">Auto-Fill Demo Patient</button>
+            <button id="playConsentAudioBtn" type="button" class="px-3 py-2 rounded-xl text-xs font-semibold bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 transition flex items-center gap-1.5">
+              <span>🔊</span><span data-i18n="audioGuideBtn">Play Audio Guide</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div>
+            <label for="patientName" class="block text-xs font-semibold text-slate-700 mb-1">Full Name *</label>
+            <input id="patientName" type="text" placeholder="e.g., Ramesh Kumar" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+          </div>
+          <div>
+            <label for="patientAge" class="block text-xs font-semibold text-slate-700 mb-1">Age (Years) *</label>
+            <input id="patientAge" type="number" min="0" max="120" placeholder="e.g., 54" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+          </div>
+          <div>
+            <label for="patientGender" class="block text-xs font-semibold text-slate-700 mb-1">Gender *</label>
+            <select id="patientGender" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+              <option value="">Select gender</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label for="abhaId" class="block text-xs font-semibold text-slate-700 mb-1">ABHA ID / Health ID (Optional)</label>
+            <input id="abhaId" type="text" placeholder="e.g., 91-4821-7734-1092" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+          </div>
+          <div>
+            <label for="department" class="block text-xs font-semibold text-slate-700 mb-1">OPD Department</label>
+            <select id="department" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-500">
+              <option value="General Medicine">General Medicine</option>
+              <option value="Cardiology">Cardiology</option>
+              <option value="Orthopaedics">Orthopaedics</option>
+              <option value="Pulmonology">Pulmonology</option>
+              <option value="AYUSH / Kayachikitsa">AYUSH / Kayachikitsa</option>
+            </select>
+          </div>
+          <div>
+            <label for="mobileNumber" class="block text-xs font-semibold text-slate-700 mb-1">Mobile / Aadhaar Last 4</label>
+            <input id="mobileNumber" type="text" placeholder="e.g., 98765-43210" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+          </div>
+        </div>
+
+        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-slate-800">DPDP Act 2023 &amp; ABDM Granular Consent</h3>
+            <span class="text-[11px] font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200">Session auto-clears after push</span>
+          </div>
+          <label class="flex items-start gap-2.5 text-xs sm:text-sm text-slate-700 cursor-pointer">
+            <input id="consentHistory" type="checkbox" class="mt-1 w-4 h-4 rounded text-teal-600 focus:ring-teal-500" />
+            <span>I consent to MediKiosk recording my spoken/touch clinical history to prepare a draft summary for my OPD doctor.</span>
+          </label>
+          <label class="flex items-start gap-2.5 text-xs sm:text-sm text-slate-700 cursor-pointer">
+            <input id="consentDocs" type="checkbox" class="mt-1 w-4 h-4 rounded text-teal-600 focus:ring-teal-500" />
+            <span>I consent to digitizing my uploaded prescriptions/lab reports and linking this structured summary to my ABHA / Hospital HIS record. (Revocable anytime)</span>
+          </label>
+        </div>
+
+        <div class="flex justify-end">
+          <button id="toStep2Btn" type="button" class="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold shadow-sm transition">Continue to Clinical History →</button>
+        </div>
+      </div>
+
+      <!-- STEP 2 -->
+      <div id="step2Panel" class="hidden bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm space-y-6">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900">Step 2: Conversational Multimodal History (Voice + Touch)</h2>
+            <p class="text-sm text-slate-500">Tap symptom chips or use voice narration. Follow-up questions adapt using the SOCRATES clinical framework.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="voiceMicBtn" type="button" class="relative px-4 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold flex items-center gap-2 transition">
+              <span id="micDot" class="w-2.5 h-2.5 rounded-full bg-rose-600"></span>
+              <span id="voiceMicLabel">Speak Chief Complaint</span>
+            </button>
+            <button id="simVoiceBtn" type="button" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition">Simulate Multilingual Voice</button>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <label class="block text-xs font-bold uppercase tracking-wider text-slate-500">1. Primary Chief Complaint (Tap one or type below)</label>
+          <div id="complaintChips" class="flex flex-wrap gap-2"></div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+            <div class="md:col-span-2">
+              <input id="complaintInput" type="text" placeholder="Describe main problem in your own words (e.g., Chest pain on walking, Fever for 4 days)" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+            </div>
+            <div>
+              <input id="durationInput" type="text" placeholder="Duration (e.g., 3 days, 2 weeks)" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-teal-50/60 border border-teal-200 rounded-2xl p-4 space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-teal-900">Adaptive Follow-Up (SOCRATES HPI Framework)</h3>
+            <span id="socratesTopicTag" class="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-teal-600 text-white">General HPI</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div>
+              <label for="hpiOnset" class="block text-xs font-semibold text-slate-700 mb-1">Onset &amp; Progression</label>
+              <select id="hpiOnset" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm bg-white">
+                <option value="Gradual over days">Gradual over days</option>
+                <option value="Sudden / Acute">Sudden / Acute</option>
+                <option value="Intermittent / Recurrent">Intermittent / Recurrent</option>
+                <option value="Chronic (> 3 months)">Chronic (&gt; 3 months)</option>
+              </select>
+            </div>
+            <div>
+              <label for="hpiCharacter" class="block text-xs font-semibold text-slate-700 mb-1">Character / Nature</label>
+              <input id="hpiCharacter" type="text" placeholder="e.g., Tightness, burning, throbbing" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm bg-white" />
+            </div>
+            <div>
+              <label for="hpiSeverity" class="block text-xs font-semibold text-slate-700 mb-1">Severity (1–10): <span id="severityVal" class="font-bold text-teal-700">5</span></label>
+              <input id="hpiSeverity" type="range" min="1" max="10" value="5" class="w-full accent-teal-600 mt-2" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Associated Symptoms (Tap all that apply — red flags auto-detected)</label>
+            <div id="assocChips" class="flex flex-wrap gap-2"></div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="border border-slate-200 rounded-2xl p-4 space-y-2.5">
+            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500">Past Medical &amp; Surgical History</label>
+            <div id="comorbidityChips" class="flex flex-wrap gap-1.5"></div>
+            <input id="pastHistoryInput" type="text" placeholder="Other conditions or past surgeries (e.g., Appendectomy 2018)" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div class="border border-slate-200 rounded-2xl p-4 space-y-2.5">
+            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500">Current Medications &amp; Drug Allergies</label>
+            <input id="currentMedsInput" type="text" placeholder="Current meds (e.g., Metformin 500mg, Amlodipine 5mg)" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+            <input id="allergiesInput" type="text" placeholder="Allergies (e.g., Penicillin rash, or NKDA)" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+        </div>
+
+        <div id="ayushPanel" class="hidden bg-amber-50/70 border border-amber-200 rounded-2xl p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-amber-900">AYUSH Mode — Dashavidha Pariksha &amp; Ahara-Vihara</h3>
+            <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900">Ayurveda Intake</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <label for="ayushPrakriti" class="block text-xs font-semibold text-amber-900 mb-1">Prakriti (Constitution)</label>
+              <select id="ayushPrakriti" class="w-full rounded-xl border border-amber-300 px-3 py-2 text-sm bg-white">
+                <option value="Vata-Pitta">Vata-Pitta</option>
+                <option value="Pitta-Kapha">Pitta-Kapha</option>
+                <option value="Vata-Kapha">Vata-Kapha</option>
+                <option value="Tridoshaja">Tridoshaja</option>
+              </select>
+            </div>
+            <div>
+              <label for="ayushAgni" class="block text-xs font-semibold text-amber-900 mb-1">Agni (Digestive Fire)</label>
+              <select id="ayushAgni" class="w-full rounded-xl border border-amber-300 px-3 py-2 text-sm bg-white">
+                <option value="Sama (Balanced)">Sama (Balanced)</option>
+                <option value="Mandagni (Sluggish)">Mandagni (Sluggish)</option>
+                <option value="Tikshnagni (Sharp)">Tikshnagni (Sharp)</option>
+                <option value="Vishamagni (Irregular)">Vishamagni (Irregular)</option>
+              </select>
+            </div>
+            <div>
+              <label for="ayushKoshtha" class="block text-xs font-semibold text-amber-900 mb-1">Koshtha (Bowel)</label>
+              <select id="ayushKoshtha" class="w-full rounded-xl border border-amber-300 px-3 py-2 text-sm bg-white">
+                <option value="Madhyama (Moderate)">Madhyama (Moderate)</option>
+                <option value="Krura (Hard/Constipated)">Krura (Hard/Constipated)</option>
+                <option value="Mridu (Soft/Frequent)">Mridu (Soft/Frequent)</option>
+              </select>
+            </div>
+            <div>
+              <label for="ayushNidana" class="block text-xs font-semibold text-amber-900 mb-1">Nidana / Ahara-Vihara</label>
+              <input id="ayushNidana" type="text" placeholder="e.g., Late dinner, spicy food, cold exposure" class="w-full rounded-xl border border-amber-300 px-3 py-2 text-sm bg-white" />
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-between">
+          <button id="backToStep1Btn" type="button" class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold transition">← Back</button>
+          <button id="toStep3Btn" type="button" class="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold shadow-sm transition">Continue to Document Scan →</button>
+        </div>
+      </div>
+
+      <!-- STEP 3 -->
+      <div id="step3Panel" class="hidden bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm space-y-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900">Step 3: Medical Document Digitization &amp; Timeline</h2>
+            <p class="text-sm text-slate-500">Upload prior prescriptions, lab reports, or discharge summaries—or test with realistic sample documents.</p>
+          </div>
+          <label class="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold cursor-pointer transition">
+            + Upload Document Image / PDF
+            <input id="docFileInput" type="file" accept="image/*,.pdf" multiple class="hidden" />
+          </label>
+        </div>
+
+        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+          <div class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2.5">Quick-Test Sample Indian Clinical Documents (OCR + Entity Extraction)</div>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" data-sample-doc="rx" class="sample-doc-btn px-3 py-2 rounded-xl bg-white hover:bg-teal-50 border border-slate-300 hover:border-teal-300 text-xs font-semibold text-slate-700 transition">+ Handwritten OPD Prescription (Oct 2026)</button>
+            <button type="button" data-sample-doc="lab" class="sample-doc-btn px-3 py-2 rounded-xl bg-white hover:bg-teal-50 border border-slate-300 hover:border-teal-300 text-xs font-semibold text-slate-700 transition">+ Lab Report: HbA1c, CBC &amp; Lipid Panel (Nov 2026)</button>
+            <button type="button" data-sample-doc="discharge" class="sample-doc-btn px-3 py-2 rounded-xl bg-white hover:bg-teal-50 border border-slate-300 hover:border-teal-300 text-xs font-semibold text-slate-700 transition">+ Discharge Summary (Aug 2025)</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="border border-slate-200 rounded-2xl p-4 space-y-3">
+            <h3 class="text-sm font-bold text-slate-800">Chronological Document Timeline</h3>
+            <div id="docTimelineList" class="space-y-2.5 text-sm text-slate-500">No documents scanned yet. Upload a file or click a sample document above.</div>
+          </div>
+          <div class="border border-slate-200 rounded-2xl p-4 space-y-3">
+            <h3 class="text-sm font-bold text-slate-800">Extracted Clinical Entities &amp; Abnormal Flags</h3>
+            <div id="extractedEntitiesBox" class="space-y-2.5 text-sm text-slate-500">Extracted diagnoses, medications, and out-of-range lab values will appear here.</div>
+          </div>
+        </div>
+
+        <div class="flex justify-between">
+          <button id="backToStep2Btn" type="button" class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold transition">← Back</button>
+          <button id="toStep4Btn" type="button" class="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold shadow-sm transition">Generate Structured Summary →</button>
+        </div>
+      </div>
+
+      <!-- STEP 4 -->
+      <div id="step4Panel" class="hidden bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm space-y-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900">Step 4: Structured Clinical Summary &amp; HIS/ABHA Push</h2>
+            <p class="text-sm text-slate-500">Review your generated clinical intake summary before routing it to the physician's OPD screen.</p>
+          </div>
+          <button id="readSummaryAudioBtn" type="button" class="px-3.5 py-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-semibold transition">🔊 Read Patient Confirmation</button>
+        </div>
+
+        <div id="kioskSummaryPreview" class="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3 text-sm"></div>
+
+        <details class="border border-slate-200 rounded-xl p-3 bg-slate-50">
+          <summary class="text-xs font-semibold text-slate-700 cursor-pointer">View FastAPI / ABDM FHIR Intake Payload (JSON)</summary>
+          <pre id="fhirPayloadPre" class="mt-2 text-xs bg-slate-900 text-emerald-300 p-3 rounded-lg overflow-x-auto"></pre>
+        </details>
+
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <button id="backToStep3Btn" type="button" class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold transition">← Back</button>
+          <div class="flex flex-wrap gap-2">
+            <button id="downloadFhirBtn" type="button" class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-semibold transition">Download FHIR JSON</button>
+            <button id="submitToHisBtn" type="button" class="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold shadow-sm transition">Submit to HIS &amp; Clear Kiosk Session ✓</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PHYSICIAN SCREEN -->
+    <section id="doctorView" class="hidden space-y-5">
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-bold text-slate-900">Physician OPD Consultation Screen</h2>
+          <p class="text-xs text-slate-500">10-second structured history brief — editable draft for physician verification.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <label for="doctorPatientSelect" class="text-xs font-semibold text-slate-600">Active Patient:</label>
+          <select id="doctorPatientSelect" class="rounded-xl border border-slate-300 px-3 py-2 text-sm bg-white font-medium focus:outline-none focus:ring-2 focus:ring-teal-500"></select>
+        </div>
+      </div>
+
+      <div id="doctorCaseContainer" class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+          <div id="doctorHeaderBanner"></div>
+          <div id="doctorStructuredSections" class="space-y-3 text-sm"></div>
+          <div class="pt-3 border-t border-slate-200 space-y-2">
+            <label for="doctorNotesInput" class="block text-xs font-bold uppercase tracking-wider text-slate-500">Physician Verification &amp; Clinical Notes (Editable Draft)</label>
+            <textarea id="doctorNotesInput" rows="3" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="Add examination findings, provisional diagnosis, or amendments..."></textarea>
+            <div class="flex flex-wrap justify-end gap-2">
+              <button id="saveDoctorDraftBtn" type="button" class="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold transition">Verify &amp; Save to EMR</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-4">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+            <h3 class="text-sm font-bold text-slate-900">Abnormal Labs &amp; Alerts</h3>
+            <div id="doctorAlertsBox" class="space-y-2 text-xs"></div>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+            <h3 class="text-sm font-bold text-slate-900">Digitized Document Timeline</h3>
+            <div id="doctorTimelineBox" class="space-y-2.5 text-xs"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- OPD QUEUE -->
+    <section id="queueView" class="hidden space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-bold text-slate-900">Live OPD Triage &amp; Intake Queue</h2>
+          <p class="text-xs text-slate-500">Red-flag cases are automatically elevated to Priority Triage.</p>
+        </div>
+        <div class="flex items-center gap-2 text-xs">
+          <span class="px-2.5 py-1 rounded-full bg-red-100 text-red-800 font-semibold">Priority Triage</span>
+          <span class="px-2.5 py-1 rounded-full bg-teal-100 text-teal-800 font-semibold">Ready for Consult</span>
+        </div>
+      </div>
+      <div id="queueList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    </section>
+  </main>
+
+  <script>
+    const API_BASE = 'http://127.0.0.1:8000';
+
+    const I18N = {
+      en: {
+        step1Title: 'Identify & Consent',
+        step2Title: 'Converse',
+        step3Title: 'Scan Docs',
+        step4Title: 'Summarize & Route',
+        s1Heading: 'Step 1: Patient Identification & Audio-Guided Consent',
+        s1Sub: 'Enter ABHA ID or basic details. Consent is compliant with DPDP Act 2023 & ABDM.',
+        audioGuideBtn: 'Play Audio Guide',
+        consentAudioText: 'Welcome to MediKiosk. Your spoken or tapped medical history and uploaded reports will be shared securely only with your OPD doctor and linked to your ABHA record with your permission.'
+      },
+      hi: {
+        step1Title: 'पहचान और सहमति',
+        step2Title: 'लक्षण बातचीत',
+        step3Title: 'दस्तावेज़ स्कैन',
+        step4Title: 'सारांश और भेजें',
+        s1Heading: 'चरण 1: रोगी की पहचान और ऑडियो सहमति',
+        s1Sub: 'ABHA आईडी या बुनियादी विवरण दर्ज करें। DPDP अधिनियम 2023 के अनुरूप।',
+        audioGuideBtn: 'ऑडियो सुनें',
+        consentAudioText: 'मेडीकियोस्क में आपका स्वागत है। आपकी बीमारी का विवरण और रिपोर्ट केवल आपके डॉक्टर के साथ सुरक्षित रूप से साझा की जाएंगी।'
+      },
+      te: {
+        step1Title: 'గుర్తింపు & సమ్మతి',
+        step2Title: 'లక్షణాల సంభాషణ',
+        step3Title: 'డాక్యుమెంట్ స్కాన్',
+        step4Title: 'సారాంశం & పంపండి',
+        s1Heading: 'దశ 1: రోగి గుర్తింపు మరియు ఆడియో సమ్మతి',
+        s1Sub: 'ABHA ID లేదా ప్రాథమిక వివరాలు నమోదు చేయండి. DPDP చట్టం 2023 ప్రకారం.',
+        audioGuideBtn: 'ఆడియో వినండి',
+        consentAudioText: 'మెడీకియోస్క్‌కు స్వాగతం. మీ ఆరోగ్య వివరాలు మరియు రిపోర్టులు మీ డాక్టర్‌తో మాత్రమే సురక్షితంగా పంచుకోబడతాయి.'
+      }
+    };
+
+    const COMPLAINT_CHIPS = [
+      'Chest Pain', 'Fever', 'Shortness of Breath', 'Joint Pain / Stiffness',
+      'Acidity / Abdominal Pain', 'Headache / Dizziness', 'Cough & Cold'
+    ];
+    const ASSOC_CHIPS = [
+      'Sweating / Diaphoresis', 'Radiating to Left Arm', 'Breathlessness at Rest',
+      'Sudden Weakness / Slurred Speech', 'Nausea / Vomiting', 'Loss of Appetite', 'Fatigue'
+    ];
+    const COMORBIDITY_CHIPS = ['Diabetes (T2DM)', 'Hypertension', 'Asthma / COPD', 'Heart Disease', 'Thyroid', 'None'];
+
+    const SAMPLE_DOCS = {
+      rx: {
+        id: 'doc-rx',
+        date: '2026-10-14',
+        type: 'Handwritten OPD Prescription',
+        facility: 'Govt. General Hospital, Vijayawada',
+        diagnoses: ['Type 2 Diabetes Mellitus', 'Essential Hypertension'],
+        medications: ['Tab. Metformin 500 mg BD', 'Tab. Amlodipine 5 mg OD', 'Tab. Atorvastatin 10 mg HS'],
+        abnormalLabs: []
+      },
+      lab: {
+        id: 'doc-lab',
+        date: '2026-11-12',
+        type: 'Lab Report (HbA1c, CBC, Lipids)',
+        facility: 'State Diagnostic Hub',
+        diagnoses: ['Uncontrolled Glycaemia', 'Mild Anaemia'],
+        medications: [],
+        abnormalLabs: [
+          { test: 'HbA1c', value: '8.4%', ref: '< 5.7%', flag: 'HIGH' },
+          { test: 'Haemoglobin', value: '9.8 g/dL', ref: '13.0–17.0 g/dL', flag: 'LOW' },
+          { test: 'LDL Cholesterol', value: '148 mg/dL', ref: '< 100 mg/dL', flag: 'HIGH' }
+        ]
+      },
+      discharge: {
+        id: 'doc-discharge',
+        date: '2025-08-22',
+        type: 'Cardiology Discharge Summary',
+        facility: 'AIIMS Mangalagiri',
+        diagnoses: ['Unstable Angina (Resolved)', 'Dyslipidaemia'],
+        medications: ['Tab. Aspirin 75 mg OD', 'Tab. Clopidogrel 75 mg OD'],
+        abnormalLabs: []
+      }
+    };
+
+    const initialCases = [
+      {
+        id: 'OPD-101',
+        token: 'P-01 (PRIORITY)',
+        priority: true,
+        verified: false,
+        opd_mode: 'allopathic',
+        patient_name: 'Suresh Babu',
+        age: 58,
+        gender: 'Male',
+        abha_id: '91-3310-8821-4402',
+        department: 'Cardiology',
+        complaint: 'Chest Pain',
+        duration: '2 hours',
+        hpi_onset: 'Sudden / Acute',
+        hpi_character: 'Crushing retrosternal tightness',
+        hpi_severity: 9,
+        assoc_symptoms: ['Sweating / Diaphoresis', 'Radiating to Left Arm', 'Breathlessness at Rest'],
+        comorbidities: ['Diabetes (T2DM)', 'Hypertension'],
+        past_history: 'PCI to LAD in 2023',
+        current_meds: 'Metformin 500mg BD, Aspirin 75mg OD',
+        allergies: 'NKDA',
+        ayush: null,
+        docs: [SAMPLE_DOCS.discharge, SAMPLE_DOCS.lab],
+        doctor_notes: ''
+      },
+      {
+        id: 'OPD-102',
+        token: 'R-14',
+        priority: false,
+        verified: true,
+        opd_mode: 'allopathic',
+        patient_name: 'Lakshmi Devi',
+        age: 49,
+        gender: 'Female',
+        abha_id: '91-7721-1044-9012',
+        department: 'General Medicine',
+        complaint: 'Fatigue & Tingling in Feet',
+        duration: '3 weeks',
+        hpi_onset: 'Gradual over days',
+        hpi_character: 'Burning sensation in soles',
+        hpi_severity: 5,
+        assoc_symptoms: ['Fatigue'],
+        comorbidities: ['Diabetes (T2DM)'],
+        past_history: 'None',
+        current_meds: 'Metformin 500mg BD',
+        allergies: 'Sulfa drugs',
+        ayush: null,
+        docs: [SAMPLE_DOCS.rx, SAMPLE_DOCS.lab],
+        doctor_notes: 'HbA1c elevated at 8.4%. Consider stepping up oral hypoglycaemic & B12 supplementation.'
+      },
+      {
+        id: 'OPD-103',
+        token: 'A-07',
+        priority: false,
+        verified: false,
+        opd_mode: 'ayush',
+        patient_name: 'Venkatesh Rao',
+        age: 62,
+        gender: 'Male',
+        abha_id: '91-5520-3391-1180',
+        department: 'AYUSH / Kayachikitsa',
+        complaint: 'Joint Pain / Stiffness',
+        duration: '6 months',
+        hpi_onset: 'Chronic (> 3 months)',
+        hpi_character: 'Morning stiffness in bilateral knees',
+        hpi_severity: 6,
+        assoc_symptoms: [],
+        comorbidities: ['None'],
+        past_history: 'None',
+        current_meds: 'Occasional NSAIDs',
+        allergies: 'NKDA',
+        ayush: {
+          prakriti: 'Vata-Kapha',
+          agni: 'Vishamagni (Irregular)',
+          koshtha: 'Krura (Hard/Constipated)',
+          nidana: 'Cold exposure, irregular meal timings'
+        },
+        docs: [],
+        doctor_notes: ''
+      }
+    ];
+
+    const state = {
+      view: 'kiosk',
+      step: 1,
+      lang: 'en',
+      opdMode: 'allopathic',
+      cases: [...initialCases],
+      selectedDoctorCaseId: 'OPD-101',
+      draft: { selectedAssoc: [], selectedComorbidities: [], docs: [] }
+    };
+
+    function showToast(msg, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const colors = { info: 'bg-slate-900 text-white', success: 'bg-teal-700 text-white', warn: 'bg-amber-600 text-white', error: 'bg-red-600 text-white' };
+      const el = document.createElement('div');
+      el.className = `pointer-events-auto px-4 py-3 rounded-xl shadow-lg text-xs font-medium ${colors[type] || colors.info}`;
+      el.textContent = msg;
+      container.appendChild(el);
+      setTimeout(() => el.remove(), 3600);
+    }
+
+    function speakText(text, langCode) {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.lang = langCode === 'hi' ? 'hi-IN' : langCode === 'te' ? 'te-IN' : 'en-IN';
+        window.speechSynthesis.speak(utter);
+      }
+      showToast(text, 'info');
+    }
+
+    function checkRedFlags() {
+      const complaint = document.getElementById('complaintInput').value.toLowerCase();
+      const assoc = state.draft.selectedAssoc.map(s => s.toLowerCase());
+      const combined = [complaint, ...assoc].join(' ');
+      const isChestPlus = complaint.includes('chest pain') && assoc.some(a => a.includes('breath') || a.includes('sweat') || a.includes('radiat'));
+      const isStroke = combined.includes('slurred speech') || combined.includes('sudden weakness');
+      const isRestDyspnoea = combined.includes('breathlessness at rest');
+
+      const banner = document.getElementById('redFlagBanner');
+      const reasonEl = document.getElementById('redFlagReason');
+      if (isChestPlus || isStroke || isRestDyspnoea) {
+        banner.classList.remove('hidden');
+        reasonEl.textContent = isStroke
+          ? 'Possible neurological red flag (sudden weakness / slurred speech) — immediate triage alert sent.'
+          : 'Acute cardiopulmonary red flag detected — patient elevated to Priority Triage.';
+        return true;
+      }
+      banner.classList.add('hidden');
+      return false;
+    }
+
+    function applyLanguage() {
+      const dict = I18N[state.lang] || I18N.en;
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (dict[key]) el.textContent = dict[key];
+      });
+    }
+
+    function setView(viewName) {
+      state.view = viewName;
+      document.getElementById('kioskView').classList.toggle('hidden', viewName !== 'kiosk');
+      document.getElementById('doctorView').classList.toggle('hidden', viewName !== 'doctor');
+      document.getElementById('queueView').classList.toggle('hidden', viewName !== 'queue');
+
+      const btns = { kiosk: 'navKioskBtn', doctor: 'navDoctorBtn', queue: 'navQueueBtn' };
+      Object.entries(btns).forEach(([k, id]) => {
+        const btn = document.getElementById(id);
+        btn.className = k === viewName
+          ? 'px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-white text-teal-700 shadow-sm transition flex items-center gap-1.5'
+          : 'px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900 transition flex items-center gap-1.5';
+      });
+
+      if (viewName === 'doctor') renderDoctorView();
+      if (viewName === 'queue') renderQueueView();
+    }
+
+    function setStep(stepNum) {
+      state.step = stepNum;
+      [1, 2, 3, 4].forEach(n => document.getElementById(`step${n}Panel`).classList.toggle('hidden', n !== stepNum));
+      document.querySelectorAll('.step-tab').forEach(tab => {
+        const n = parseInt(tab.getAttribute('data-step'), 10);
+        const badge = tab.querySelector('span');
+        const title = tab.querySelector('div > div:first-child');
+        if (n === stepNum) {
+          tab.className = 'step-tab flex flex-col sm:flex-row items-center gap-2 p-2 rounded-xl text-left transition bg-teal-50 border border-teal-200';
+          badge.className = 'w-7 h-7 rounded-full bg-teal-600 text-white text-xs font-bold flex items-center justify-center shrink-0';
+          title.className = 'text-xs font-bold text-teal-900 truncate';
+        } else if (n < stepNum) {
+          tab.className = 'step-tab flex flex-col sm:flex-row items-center gap-2 p-2 rounded-xl text-left transition bg-emerald-50/50 border border-emerald-200';
+          badge.className = 'w-7 h-7 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center justify-center shrink-0';
+          title.className = 'text-xs font-bold text-emerald-900 truncate';
+        } else {
+          tab.className = 'step-tab flex flex-col sm:flex-row items-center gap-2 p-2 rounded-xl text-left transition hover:bg-slate-50 border border-transparent';
+          badge.className = 'w-7 h-7 rounded-full bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center shrink-0';
+          title.className = 'text-xs font-bold text-slate-700 truncate';
+        }
+      });
+      if (stepNum === 4) renderStep4Summary();
+    }
+
+    function renderChips() {
+      const cBox = document.getElementById('complaintChips');
+      cBox.innerHTML = '';
+      COMPLAINT_CHIPS.forEach(label => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'touch-chip px-3.5 py-2 rounded-xl text-xs font-semibold border border-slate-300 bg-white hover:bg-teal-50 hover:border-teal-400 text-slate-700 transition';
+        btn.textContent = label;
+        btn.addEventListener('click', () => {
+          document.getElementById('complaintInput').value = label;
+          document.getElementById('socratesTopicTag').textContent = `${label} HPI`;
+          checkRedFlags();
         });
-    </script>
+        cBox.appendChild(btn);
+      });
+
+      const aBox = document.getElementById('assocChips');
+      aBox.innerHTML = '';
+      ASSOC_CHIPS.forEach(label => {
+        const active = state.draft.selectedAssoc.includes(label);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `touch-chip px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
+          active ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+        }`;
+        btn.textContent = label;
+        btn.addEventListener('click', () => {
+          state.draft.selectedAssoc = state.draft.selectedAssoc.includes(label)
+            ? state.draft.selectedAssoc.filter(x => x !== label)
+            : [...state.draft.selectedAssoc, label];
+          renderChips();
+          checkRedFlags();
+        });
+        aBox.appendChild(btn);
+      });
+
+      const mBox = document.getElementById('comorbidityChips');
+      mBox.innerHTML = '';
+      COMORBIDITY_CHIPS.forEach(label => {
+        const active = state.draft.selectedComorbidities.includes(label);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition ${
+          active ? 'bg-slate-800 text-white border-slate-800' : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
+        }`;
+        btn.textContent = label;
+        btn.addEventListener('click', () => {
+          if (label === 'None') {
+            state.draft.selectedComorbidities = ['None'];
+          } else {
+            state.draft.selectedComorbidities = state.draft.selectedComorbidities.filter(x => x !== 'None');
+            state.draft.selectedComorbidities = state.draft.selectedComorbidities.includes(label)
+              ? state.draft.selectedComorbidities.filter(x => x !== label)
+              : [...state.draft.selectedComorbidities, label];
+          }
+          renderChips();
+        });
+        mBox.appendChild(btn);
+      });
+    }
+
+    function renderDocs() {
+      const timelineEl = document.getElementById('docTimelineList');
+      const entitiesEl = document.getElementById('extractedEntitiesBox');
+      const sorted = [...state.draft.docs].sort((a, b) => b.date.localeCompare(a.date));
+
+      if (sorted.length === 0) {
+        timelineEl.innerHTML = '<p class="text-xs text-slate-500">No documents scanned yet. Upload a file or click a sample document above.</p>';
+        entitiesEl.innerHTML = '<p class="text-xs text-slate-500">Extracted diagnoses, medications, and out-of-range lab values will appear here.</p>';
+        return;
+      }
+
+      timelineEl.innerHTML = sorted.map(d => `
+        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-start justify-between gap-2">
+          <div>
+            <div class="text-xs font-bold text-slate-900">${d.date} — ${d.type}</div>
+            <div class="text-[11px] text-slate-500">${d.facility}</div>
+          </div>
+          <button type="button" data-remove-doc="${d.id}" class="text-xs text-rose-600 hover:underline font-semibold">Remove</button>
+        </div>
+      `).join('');
+
+      timelineEl.querySelectorAll('[data-remove-doc]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-remove-doc');
+          state.draft.docs = state.draft.docs.filter(d => d.id !== id);
+          renderDocs();
+        });
+      });
+
+      const allDx = [...new Set(sorted.flatMap(d => d.diagnoses))];
+      const allMeds = [...new Set(sorted.flatMap(d => d.medications))];
+      const allLabs = sorted.flatMap(d => d.abnormalLabs);
+
+      entitiesEl.innerHTML = `
+        <div class="space-y-2">
+          <div><span class="text-xs font-bold text-slate-700">Diagnoses:</span> <span class="text-xs text-slate-800">${allDx.length ? allDx.join(', ') : 'None extracted'}</span></div>
+          <div><span class="text-xs font-bold text-slate-700">Medications:</span> <span class="text-xs text-slate-800">${allMeds.length ? allMeds.join('; ') : 'None extracted'}</span></div>
+          <div>
+            <span class="text-xs font-bold text-slate-700">Abnormal Investigations:</span>
+            ${allLabs.length ? `<div class="mt-1 space-y-1">${allLabs.map(l => `
+              <div class="flex items-center justify-between px-2.5 py-1 rounded-lg bg-red-50 border border-red-200 text-xs">
+                <span class="font-semibold text-red-900">${l.test}: ${l.value}</span>
+                <span class="text-red-700 font-bold">${l.flag} (Ref: ${l.ref})</span>
+              </div>`).join('')}</div>` : '<span class="text-xs text-slate-500"> No abnormal labs flagged</span>'}
+          </div>
+        </div>
+      `;
+    }
+
+    function collectCurrentPayload() {
+      const isPriority = checkRedFlags();
+      return {
+        patient_name: document.getElementById('patientName').value.trim() || 'Unnamed Patient',
+        age: parseInt(document.getElementById('patientAge').value, 10) || 0,
+        gender: document.getElementById('patientGender').value || 'Unspecified',
+        abha_id: document.getElementById('abhaId').value.trim() || 'Unlinked',
+        department: document.getElementById('department').value,
+        complaint: document.getElementById('complaintInput').value.trim() || 'General Consultation',
+        duration: document.getElementById('durationInput').value.trim() || 'Unspecified',
+        hpi_onset: document.getElementById('hpiOnset').value,
+        hpi_character: document.getElementById('hpiCharacter').value.trim() || 'Not specified',
+        hpi_severity: parseInt(document.getElementById('hpiSeverity').value, 10),
+        assoc_symptoms: [...state.draft.selectedAssoc],
+        comorbidities: [...state.draft.selectedComorbidities],
+        past_history: document.getElementById('pastHistoryInput').value.trim() || 'None',
+        current_meds: document.getElementById('currentMedsInput').value.trim() || 'None',
+        allergies: document.getElementById('allergiesInput').value.trim() || 'NKDA',
+        opd_mode: state.opdMode,
+        priority: isPriority,
+        ayush: state.opdMode === 'ayush' ? {
+          prakriti: document.getElementById('ayushPrakriti').value,
+          agni: document.getElementById('ayushAgni').value,
+          koshtha: document.getElementById('ayushKoshtha').value,
+          nidana: document.getElementById('ayushNidana').value.trim() || 'Not specified'
+        } : null,
+        docs: [...state.draft.docs]
+      };
+    }
+
+    function renderStep4Summary() {
+      const p = collectCurrentPayload();
+      document.getElementById('kioskSummaryPreview').innerHTML = `
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200">
+          <div>
+            <div class="text-base font-bold text-slate-900">${p.patient_name} (${p.age}y / ${p.gender})</div>
+            <div class="text-xs text-slate-500">ABHA: ${p.abha_id} • Dept: ${p.department}</div>
+          </div>
+          <span class="px-2.5 py-1 rounded-full text-xs font-bold ${p.priority ? 'bg-red-100 text-red-800' : 'bg-teal-100 text-teal-800'}">
+            ${p.priority ? 'PRIORITY TRIAGE' : 'Standard OPD'}
+          </span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs sm:text-sm">
+          <div><strong>Chief Complaint:</strong> ${p.complaint} (${p.duration})</div>
+          <div><strong>HPI (SOCRATES):</strong> ${p.hpi_onset}, ${p.hpi_character}, Severity ${p.hpi_severity}/10</div>
+          <div><strong>Associated Symptoms:</strong> ${p.assoc_symptoms.length ? p.assoc_symptoms.join(', ') : 'None'}</div>
+          <div><strong>Past / Comorbidities:</strong> ${p.comorbidities.join(', ') || 'None'} ${p.past_history !== 'None' ? '— ' + p.past_history : ''}</div>
+          <div><strong>Medications:</strong> ${p.current_meds}</div>
+          <div><strong>Allergies:</strong> ${p.allergies}</div>
+        </div>
+        ${p.ayush ? `<div class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+          <strong>AYUSH Dashavidha Pariksha:</strong> Prakriti: ${p.ayush.prakriti} | Agni: ${p.ayush.agni} | Koshtha: ${p.ayush.koshtha} | Nidana: ${p.ayush.nidana}
+        </div>` : ''}
+      `;
+      document.getElementById('fhirPayloadPre').textContent = JSON.stringify(p, null, 2);
+    }
+
+    function renderDoctorView() {
+      const sel = document.getElementById('doctorPatientSelect');
+      sel.innerHTML = state.cases.map(c =>
+        `<option value="${c.id}" ${c.id === state.selectedDoctorCaseId ? 'selected' : ''}>${c.token} — ${c.patient_name} (${c.complaint})</option>`
+      ).join('');
+
+      const c = state.cases.find(x => x.id === state.selectedDoctorCaseId) || state.cases[0];
+      if (!c) return;
+
+      document.getElementById('doctorHeaderBanner').innerHTML = `
+        <div class="p-4 rounded-2xl ${c.priority ? 'bg-red-50 border border-red-300' : 'bg-teal-50 border border-teal-200'} flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-base font-bold text-slate-900">${c.patient_name}</span>
+              <span class="text-xs font-semibold text-slate-600">${c.age}y / ${c.gender}</span>
+              <span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${c.priority ? 'bg-red-600 text-white' : 'bg-teal-600 text-white'}">${c.token}</span>
+            </div>
+            <div class="text-xs text-slate-600 mt-0.5">ABHA: ${c.abha_id} • ${c.department}</div>
+          </div>
+          <span class="text-xs font-bold px-2.5 py-1 rounded-lg ${c.verified ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+            ${c.verified ? '✓ EMR Verified' : 'Draft Summary — Awaiting Physician Review'}
+          </span>
+        </div>
+      `;
+
+      document.getElementById('doctorStructuredSections').innerHTML = `
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <div class="text-[11px] font-bold uppercase text-slate-500">Chief Complaint &amp; Duration</div>
+            <div class="font-semibold text-slate-900 mt-0.5">${c.complaint} (${c.duration})</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <div class="text-[11px] font-bold uppercase text-slate-500">HPI (SOCRATES)</div>
+            <div class="text-slate-800 mt-0.5">${c.hpi_onset}; ${c.hpi_character}; Severity ${c.hpi_severity}/10</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <div class="text-[11px] font-bold uppercase text-slate-500">Past &amp; Comorbidities</div>
+            <div class="text-slate-800 mt-0.5">${(c.comorbidities || []).join(', ') || 'None'} ${c.past_history && c.past_history !== 'None' ? '— ' + c.past_history : ''}</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <div class="text-[11px] font-bold uppercase text-slate-500">Medications &amp; Allergies</div>
+            <div class="text-slate-800 mt-0.5">Meds: ${c.current_meds} | Allergies: <strong class="text-rose-700">${c.allergies}</strong></div>
+          </div>
+        </div>
+        ${c.ayush ? `<div class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+          <strong>AYUSH Dashavidha Pariksha:</strong> Prakriti: ${c.ayush.prakriti} • Agni: ${c.ayush.agni} • Koshtha: ${c.ayush.koshtha} • Nidana: ${c.ayush.nidana}
+        </div>` : ''}
+      `;
+
+      document.getElementById('doctorNotesInput').value = c.doctor_notes || '';
+
+      const labs = (c.docs || []).flatMap(d => d.abnormalLabs || []);
+      document.getElementById('doctorAlertsBox').innerHTML = `
+        ${c.priority ? '<div class="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-900 font-semibold">Red-Flag Symptoms: ' + (c.assoc_symptoms || []).join(', ') + '</div>' : ''}
+        ${labs.length ? labs.map(l => `
+          <div class="p-2.5 rounded-xl bg-amber-50 border border-amber-200 flex justify-between">
+            <span class="font-semibold text-amber-950">${l.test}: ${l.value}</span>
+            <span class="font-bold text-red-700">${l.flag}</span>
+          </div>
+        `).join('') : '<p class="text-slate-500">No abnormal lab values flagged.</p>'}
+      `;
+
+      const docs = [...(c.docs || [])].sort((a, b) => b.date.localeCompare(a.date));
+      document.getElementById('doctorTimelineBox').innerHTML = docs.length
+        ? docs.map(d => `
+          <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+            <div class="font-bold text-slate-900">${d.date} — ${d.type}</div>
+            <div class="text-slate-500">${d.facility}</div>
+            <div class="text-slate-700 mt-1">Dx: ${(d.diagnoses || []).join(', ') || '—'}</div>
+          </div>
+        `).join('')
+        : '<p class="text-slate-500">No prior documents digitized.</p>';
+    }
+
+    function renderQueueView() {
+      document.getElementById('queueBadge').textContent = state.cases.length;
+      const sorted = [...state.cases].sort((a, b) => Number(b.priority) - Number(a.priority));
+      const box = document.getElementById('queueList');
+      box.innerHTML = sorted.map(c => `
+        <div class="bg-white rounded-2xl border ${c.priority ? 'border-red-300 ring-1 ring-red-200' : 'border-slate-200'} p-4 shadow-sm flex flex-col justify-between gap-3">
+          <div>
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-bold px-2.5 py-0.5 rounded-full ${c.priority ? 'bg-red-600 text-white' : 'bg-teal-50 text-teal-800 border border-teal-200'}">${c.token}</span>
+              <span class="text-[11px] font-semibold text-slate-500">${c.department}</span>
+            </div>
+            <h3 class="text-base font-bold text-slate-900 mt-2">${c.patient_name} <span class="text-xs font-normal text-slate-500">(${c.age}y / ${c.gender})</span></h3>
+            <p class="text-xs text-slate-700 mt-1"><strong>Complaint:</strong> ${c.complaint} (${c.duration})</p>
+          </div>
+          <button type="button" data-open-case="${c.id}" class="w-full py-2 rounded-xl bg-slate-100 hover:bg-teal-600 hover:text-white text-slate-800 text-xs font-semibold transition">Open in Physician Screen →</button>
+        </div>
+      `).join('');
+
+      box.querySelectorAll('[data-open-case]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.selectedDoctorCaseId = btn.getAttribute('data-open-case');
+          setView('doctor');
+        });
+      });
+    }
+
+    document.getElementById('navKioskBtn').addEventListener('click', () => setView('kiosk'));
+    document.getElementById('navDoctorBtn').addEventListener('click', () => setView('doctor'));
+    document.getElementById('navQueueBtn').addEventListener('click', () => setView('queue'));
+
+    document.getElementById('langSelect').addEventListener('change', (e) => { state.lang = e.target.value; applyLanguage(); });
+    document.getElementById('opdModeSelect').addEventListener('change', (e) => {
+      state.opdMode = e.target.value;
+      document.getElementById('ayushPanel').classList.toggle('hidden', state.opdMode !== 'ayush');
+      showToast(`Switched to ${state.opdMode === 'ayush' ? 'AYUSH / Ayurveda' : 'Allopathic'} OPD Mode`, 'info');
+    });
+
+    document.querySelectorAll('.step-tab').forEach(tab => tab.addEventListener('click', () => setStep(parseInt(tab.getAttribute('data-step'), 10))));
+
+    document.getElementById('fillSamplePatientBtn').addEventListener('click', () => {
+      document.getElementById('patientName').value = 'Ananya Sharma';
+      document.getElementById('patientAge').value = '44';
+      document.getElementById('patientGender').value = 'Female';
+      document.getElementById('abhaId').value = '91-6204-9183-2201';
+      document.getElementById('mobileNumber').value = '98480-11223';
+      document.getElementById('consentHistory').checked = true;
+      document.getElementById('consentDocs').checked = true;
+      showToast('Demo patient loaded with ABDM consent', 'success');
+    });
+
+    document.getElementById('playConsentAudioBtn').addEventListener('click', () => {
+      const dict = I18N[state.lang] || I18N.en;
+      speakText(dict.consentAudioText, state.lang);
+    });
+
+    document.getElementById('toStep2Btn').addEventListener('click', () => {
+      const name = document.getElementById('patientName').value.trim();
+      const age = document.getElementById('patientAge').value.trim();
+      const gender = document.getElementById('patientGender').value;
+      if (!name || !age || !gender) return showToast('Please enter Name, Age, and Gender to continue.', 'warn');
+      if (!document.getElementById('consentHistory').checked || !document.getElementById('consentDocs').checked) {
+        return showToast('Please accept both DPDP 2023 consent checkboxes.', 'warn');
+      }
+      setStep(2);
+    });
+
+    document.getElementById('backToStep1Btn').addEventListener('click', () => setStep(1));
+    document.getElementById('toStep3Btn').addEventListener('click', () => setStep(3));
+    document.getElementById('backToStep2Btn').addEventListener('click', () => setStep(2));
+    document.getElementById('toStep4Btn').addEventListener('click', () => setStep(4));
+    document.getElementById('backToStep3Btn').addEventListener('click', () => setStep(3));
+
+    document.getElementById('hpiSeverity').addEventListener('input', (e) => { document.getElementById('severityVal').textContent = e.target.value; });
+    document.getElementById('complaintInput').addEventListener('input', checkRedFlags);
+
+    document.getElementById('simVoiceBtn').addEventListener('click', () => {
+      const samples = {
+        en: { text: 'Chest pain since morning with sweating', dur: '4 hours' },
+        hi: { text: 'सुबह से सीने में दर्द और पसीना आ रहा है (Chest pain)', dur: '4 hours' },
+        te: { text: 'ఉదయం నుండి ఛాతీ నొప్పి మరియు చెమటలు (Chest pain)', dur: '4 hours' }
+      };
+      const s = samples[state.lang] || samples.en;
+      document.getElementById('complaintInput').value = s.text;
+      document.getElementById('durationInput').value = s.dur;
+      if (!state.draft.selectedAssoc.includes('Sweating / Diaphoresis')) state.draft.selectedAssoc.push('Sweating / Diaphoresis');
+      renderChips();
+      checkRedFlags();
+      showToast('Multilingual ASR transcript captured', 'success');
+    });
+
+    document.getElementById('voiceMicBtn').addEventListener('click', () => {
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRec) return showToast('Browser speech recognition unavailable — use "Simulate Multilingual Voice" or touch chips.', 'info');
+      const rec = new SpeechRec();
+      rec.lang = state.lang === 'hi' ? 'hi-IN' : state.lang === 'te' ? 'te-IN' : 'en-IN';
+      document.getElementById('micDot').classList.add('mic-pulse');
+      document.getElementById('voiceMicLabel').textContent = 'Listening...';
+      rec.onresult = (ev) => {
+        document.getElementById('complaintInput').value = ev.results[0][0].transcript;
+        checkRedFlags();
+        showToast('Voice captured', 'success');
+      };
+      rec.onend = () => {
+        document.getElementById('micDot').classList.remove('mic-pulse');
+        document.getElementById('voiceMicLabel').textContent = 'Speak Chief Complaint';
+      };
+      rec.start();
+    });
+
+    document.querySelectorAll('.sample-doc-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const doc = SAMPLE_DOCS[btn.getAttribute('data-sample-doc')];
+        if (!state.draft.docs.some(d => d.id === doc.id)) {
+          state.draft.docs.push(doc);
+          renderDocs();
+          showToast(`Digitized ${doc.type}`, 'success');
+        }
+      });
+    });
+
+    document.getElementById('docFileInput').addEventListener('change', (e) => {
+      const files = Array.from(e.target.files || []);
+      files.forEach((f, idx) => {
+        state.draft.docs.push({
+          id: 'upload-' + Date.now() + '-' + idx,
+          date: new Date().toISOString().slice(0, 10),
+          type: `Uploaded Record (${f.name})`,
+          facility: 'Patient Uploaded Document',
+          diagnoses: ['Pending Physician Review'],
+          medications: [],
+          abnormalLabs: []
+        });
+      });
+      renderDocs();
+      showToast(`${files.length} document(s) queued for OCR`, 'success');
+    });
+
+    document.getElementById('readSummaryAudioBtn').addEventListener('click', () => {
+      const p = collectCurrentPayload();
+      speakText(`Summary ready for ${p.patient_name}. Chief complaint: ${p.complaint} for ${p.duration}.`, state.lang);
+    });
+
+    document.getElementById('downloadFhirBtn').addEventListener('click', () => {
+      const blob = new Blob([document.getElementById('fhirPayloadPre').textContent], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'medikiosk-abdm-fhir-bundle.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('ABDM FHIR JSON downloaded', 'success');
+    });
+
+    document.getElementById('submitToHisBtn').addEventListener('click', async () => {
+      const payload = collectCurrentPayload();
+      let newId = 'OPD-' + (100 + state.cases.length + 1);
+      let token = payload.priority ? `P-0${state.cases.filter(c => c.priority).length + 1} (PRIORITY)` : `R-${14 + state.cases.length}`;
+
+      try {
+        const res = await fetch(`${API_BASE}/api/patient/intake`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const result = await res.json();
+          newId = result.case.id;
+          token = result.case.token;
+          showToast(result.message, 'success');
+        }
+      } catch (err) {
+        showToast('Saved in browser (start Uvicorn to sync with FastAPI)', 'warn');
+      }
+
+      state.cases.unshift({ id: newId, token, verified: false, doctor_notes: '', ...payload });
+      state.selectedDoctorCaseId = newId;
+      document.getElementById('queueBadge').textContent = state.cases.length;
+
+      ['patientName', 'patientAge', 'abhaId', 'mobileNumber', 'complaintInput', 'durationInput', 'hpiCharacter', 'pastHistoryInput', 'currentMedsInput', 'allergiesInput', 'ayushNidana'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      document.getElementById('patientGender').value = '';
+      document.getElementById('consentHistory').checked = false;
+      document.getElementById('consentDocs').checked = false;
+      state.draft = { selectedAssoc: [], selectedComorbidities: [], docs: [] };
+      document.getElementById('redFlagBanner').classList.add('hidden');
+      renderChips();
+      renderDocs();
+      setStep(1);
+      setView('doctor');
+    });
+
+    document.getElementById('doctorPatientSelect').addEventListener('change', (e) => {
+      state.selectedDoctorCaseId = e.target.value;
+      renderDoctorView();
+    });
+
+    document.getElementById('saveDoctorDraftBtn').addEventListener('click', async () => {
+      const c = state.cases.find(x => x.id === state.selectedDoctorCaseId);
+      if (!c) return;
+      const notes = document.getElementById('doctorNotesInput').value;
+      c.doctor_notes = notes;
+      c.verified = true;
+
+      try {
+        await fetch(`${API_BASE}/api/cases/${c.id}/verify`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ doctor_notes: notes })
+        });
+      } catch (e) {}
+
+      renderDoctorView();
+      showToast('Clinical summary verified & saved to EMR', 'success');
+    });
+
+    async function loadCasesFromBackend() {
+      try {
+        const res = await fetch(`${API_BASE}/api/cases`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.cases && data.cases.length) {
+            state.cases = data.cases;
+            state.selectedDoctorCaseId = state.cases[0].id;
+          }
+        }
+      } catch (e) {}
+      document.getElementById('queueBadge').textContent = state.cases.length;
+    }
+
+    applyLanguage();
+    renderChips();
+    renderDocs();
+    loadCasesFromBackend();
+  </script>
 </body>
 </html>
